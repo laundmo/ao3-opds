@@ -1,0 +1,39 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'ao3-opds'",
+      "cargo": {
+        "args": ["build", "--bin=ao3-opds", "--package=ao3-opds"],
+        "filter": {
+          "name": "ao3-opds",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "terminal": "console",
+      "sourceLanguages": ["rust"]
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in executable 'ao3-opds'",
+      "cargo": {
+        "args": ["test", "--no-run", "--bin=ao3-opds", "--package=ao3-opds"],
+        "filter": {
+          "name": "ao3-opds",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "terminal": "console"
+    }
+  ]
+}

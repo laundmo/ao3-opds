@@ -1,0 +1,20 @@
+[package]
+name = "ao3-opds"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+xml-rs = "0.8.4"
+serde-xml-rs = "0.5.1"
+chrono = "0.4.23"
+scraper = "0.14.0"
+quick-xml = "0.27.1"
+poem = { version = "1.3.55", features = ["xml", "anyhow"] }
+tokio = { version = "1.25.0", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.11.14", features = ["rustls-tls-native-roots", "cookies"] }
+dotenvy = "0.15.6"
+lazy_static = "1.4.0"
+regex = "1.7.1"
+color-eyre = "0.6.2"

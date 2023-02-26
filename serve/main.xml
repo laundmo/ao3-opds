@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+    xmlns:opds="http://opds-spec.org/2010/catalog">
+    <id>1</id>
+    <title>Test Feed</title>
+    <updated>2023-02-25T18:19:56.020806800+00:00</updated>
+    <link type="application/atom+xml;profile=opds-catalog;kind=navigation" rel="self" href="/" />
+    <entry>
+        <title>Test Entry</title>
+        <id>2</id>
+        <updated>2023-02-25T18:19:56.006537100+00:00</updated>
+        <content>Test Entry Content blah blah blah</content>
+        <author>
+            <name>testauthor</name>
+        </author>
+        <link type="image/jpeg" rel="http://opds-spec.org/image" href="https://i.laundmo.com/tENe0/noLAletu89.png" />
+    </entry>
+</feed>
