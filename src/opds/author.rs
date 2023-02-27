@@ -1,6 +1,6 @@
 use crate::XmlWriter;
 
-use anyhow::Result;
+use color_eyre::Result;
 use quick_xml::events::BytesText;
 
 /// Represents an author in an OPDS feed.

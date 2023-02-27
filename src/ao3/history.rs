@@ -4,6 +4,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use scraper::ElementRef;
 
+use crate::opds::{OpdsEntry, OpdsFeed};
+
 use super::{session::AuthorizedSession, utils::*, Work};
 
 #[derive(Debug)]
@@ -64,24 +66,59 @@ impl HistoryWork {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct History {
-    history: Vec<HistoryWork>,
+impl From<HistoryWork> for OpdsEntry {
+    fn from(value: HistoryWork) -> Self {
+        value.work.into() // TODO: maybe add to the OpdsEntry when doing this
+    }
 }
 
-impl History {
-    pub(crate) fn from_element(element: &ElementRef) -> Result<History> {
+#[derive(Debug)]
+pub(crate) struct HistoryPage {
+    history: Vec<HistoryWork>,
+    page: usize,
+    has_next: bool,
+    has_prev: bool,
+}
+
+impl HistoryPage {
+    pub(crate) fn from_element(element: &ElementRef, page: usize) -> Result<HistoryPage> {
         let mut history = Vec::new();
 
         for element in select_all(element, "ol.reading.index > li.reading.blurb") {
             let work = HistoryWork::from_element(&element)?;
             history.push(work);
         }
-        Ok(History { history })
+        let has_prev = select_next(element, "ol.pagination > li.previous > a")
+            .ok()
+            .is_some();
+        let has_next = select_next(element, "ol.pagination > li.next > a")
+            .ok()
+            .is_some();
+
+        Ok(HistoryPage {
+            history,
+            page,
+            has_next,
+            has_prev,
+        })
     }
 
-    pub(crate) async fn new(session: &AuthorizedSession, page: usize) -> Result<History> {
+    pub(crate) async fn new(session: &AuthorizedSession, page: usize) -> Result<HistoryPage> {
         let html = session.get_history_page(page).await?;
-        Self::from_element(&html.root_element())
+        Self::from_element(&html.root_element(), page)
+    }
+}
+
+impl From<HistoryPage> for OpdsFeed {
+    fn from(value: HistoryPage) -> Self {
+        OpdsFeed::paginated(
+            &format!("history-page-{}", value.page),
+            &format!("History page {}", value.page),
+            "history",
+            value.history.into(),
+            value.page,
+            value.has_next,
+            value.has_prev,
+        )
     }
 }

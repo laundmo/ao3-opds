@@ -85,7 +85,8 @@ impl OpdsLink {
             .create_element("link")
             .with_attribute(("type", self.link_type.as_str()))
             .with_attribute(("rel", self.rel.as_str()))
-            .with_attribute(("href", self.href.as_str()));
+            .with_attribute(("href", self.href.as_str()))
+            .write_empty()?;
         Ok(())
     }
 }

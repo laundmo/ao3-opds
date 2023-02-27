@@ -27,23 +27,7 @@ impl Session {
     }
 
     pub(crate) async fn login(self, username: &str, password: &str) -> Result<AuthorizedSession> {
-        let body = self
-            .client
-            .get(Session::login_url())
-            .send()
-            .await?
-            .text()
-            .await?;
-        let doc = Html::parse_document(&body);
-        let selector = Selector::parse(r#"input[name="authenticity_token"]"#).unwrap();
-        let authenticity_token = match doc.select(&selector).next() {
-            Some(input) => input
-                .value()
-                .attr("value")
-                .ok_or(eyre!("Issue getting authenticity token"))?
-                .to_string(),
-            None => "".to_string(),
-        };
+        let authenticity_token = self.get_authenticiry_token().await?;
         let payload = [
             ("user[login]", username),
             ("user[password]", password),
@@ -66,6 +50,26 @@ impl Session {
             // println!("{:?}", res.text().await?);
             Err(eyre!("Invalid username or password"))
         }
+    }
+
+    async fn get_authenticiry_token(&self) -> Result<String, color_eyre::Report> {
+        let body = self
+            .client
+            .get(Session::login_url())
+            .send()
+            .await?
+            .text()
+            .await?;
+        let doc = Html::parse_document(&body);
+        let selector = Selector::parse(r#"input[name="authenticity_token"]"#).unwrap();
+        Ok(match doc.select(&selector).next() {
+            Some(input) => input
+                .value()
+                .attr("value")
+                .ok_or(eyre!("Issue getting authenticity token"))?
+                .to_string(),
+            None => "".to_string(),
+        })
     }
 }
 

@@ -1,53 +1,80 @@
-use color_eyre::Result;
+use color_eyre::{eyre::eyre, Result};
 use std::env;
 
-use crate::ao3::{History, Session};
+use crate::ao3::{HistoryPage, Session};
 
-mod ao3;
 use opds::OpdsFeed;
 use poem::{
-    get, handler, http::StatusCode, listener::TcpListener, IntoResponse, Response, Route, Server,
+    error::ResponseError,
+    get, handler,
+    http::{HeaderMap, HeaderValue, StatusCode},
+    listener::TcpListener,
+    web::Query,
+    IntoResponse, Response, Result as WebResult, Route, Server,
 };
 use quick_xml::Writer;
 use std::io::Cursor;
 
 use crate::opds::{OpdsEntry, OpdsLink, OpdsLinkRel, OpdsLinkType};
+
+mod ao3;
 mod opds;
 
 pub type XmlWriter = Writer<Cursor<Vec<u8>>>;
 pub type XmlResult = std::result::Result<(), quick_xml::Error>;
 
-impl IntoResponse for OpdsFeed {
-    fn into_response(self) -> Response {
-        match self.build() {
-            Ok(xml) => Response::builder()
-                .status(StatusCode::OK)
-                .header(
-                    "Content-Type",
-                    "application/atom+xml;profile=opds-catalog;kind=navigation",
-                )
-                .body(xml)
-                .into_response(),
-            Err(err) => Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(err.to_string())
-                .into_response(),
+#[derive(Debug, thiserror::Error)]
+#[error("{message}")]
+struct EyreError {
+    message: String,
+}
+
+impl From<color_eyre::Report> for EyreError {
+    fn from(value: color_eyre::Report) -> Self {
+        EyreError {
+            message: format!("{:?}", value),
         }
     }
 }
 
-async fn history_page() -> Result<History> {
+impl ResponseError for EyreError {
+    fn status(&self) -> StatusCode {
+        StatusCode::BAD_REQUEST
+    }
+}
+
+async fn history_page(page: usize) -> Result<HistoryPage> {
     let session = Session::new()?;
     let session = session.login("laundmo", &env::var("AO3_PW")?).await?;
-    History::new(&session, 1).await
+    HistoryPage::new(&session, page).await
+}
+
+fn feed_to_web(feed: OpdsFeed) -> WebResult<(HeaderMap, String)> {
+    let mut headers = HeaderMap::new();
+    let header = "application/atom+xml;profile=opds-catalog;kind=navigation"
+        .parse()
+        .map_err(|_| EyreError::from(eyre!("Failed to parse header")))?;
+    headers.insert("Content-Type", header);
+    Ok((headers, feed.build().map_err(EyreError::from)?))
+}
+
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct Pagination {
+    page: usize,
 }
 
 #[handler]
-async fn hello() -> OpdsFeed {
-    let history = history_page().await;
-    if let Err(err) = history {
-        println!("{:?}", err);
-    }
+async fn history_feed(
+    Query(Pagination { page }): Query<Pagination>,
+) -> WebResult<(HeaderMap, String)> {
+    let history = history_page(page).await.map_err(EyreError::from)?;
+    feed_to_web(history.into())
+}
+
+#[handler]
+fn testfeed() -> WebResult<(HeaderMap, String)> {
     // todo
     let entry = OpdsEntry::new(
         "2".to_string(),
@@ -66,19 +93,20 @@ async fn hello() -> OpdsFeed {
         rel: OpdsLinkRel::ItSelf,
         href: "/".to_string(),
     };
-    OpdsFeed::new(
+    let feed = OpdsFeed::new(
         "1".to_string(),
         "Test Feed".to_string(),
         Some(vec![link]),
         vec![entry],
-    )
+    );
+    feed_to_web(feed)
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv()?;
     color_eyre::install()?;
-    let app = Route::new().at("/hello", get(hello));
+    let app = Route::new().at("/opds/v1.2/history", get(history_feed));
     Server::new(TcpListener::bind("127.0.0.1:3000"))
         .name("hello-world")
         .run(app)

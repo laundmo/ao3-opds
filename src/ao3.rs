@@ -4,7 +4,7 @@ pub(crate) mod utils;
 mod work;
 
 pub(crate) use self::{
-    history::{History, HistoryWork},
+    history::{HistoryPage, HistoryWork},
     session::Session,
-    work::{Author, SeriesRef, Tags, Work},
+    work::{Authors, SeriesRef, Tags, Work},
 };

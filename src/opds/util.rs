@@ -1,7 +1,4 @@
 use quick_xml::events::BytesText;
-use xml::{writer::XmlEvent, EventWriter};
-
-use anyhow::Result;
 
 use crate::{XmlResult, XmlWriter};
 pub trait OpdsEnumStr {

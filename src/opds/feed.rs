@@ -5,7 +5,7 @@ use super::{
     link::{OpdsLink, OpdsLinkRel, OpdsLinkType},
     util,
 };
-use anyhow::Result;
+use color_eyre::Result;
 use quick_xml::Writer;
 
 #[derive(Debug)]
@@ -36,8 +36,9 @@ impl OpdsFeed {
         title: &str,
         href_postfix: &str,
         data: Vec<T>,
-        page: i64,
-        count: i64,
+        page: usize,
+        has_next: bool,
+        has_prev: bool,
     ) -> OpdsFeed
     where
         OpdsEntry: From<T>,
@@ -48,7 +49,8 @@ impl OpdsFeed {
             href_postfix.to_string(),
             data,
             page,
-            count,
+            has_next,
+            has_prev,
         )
             .into()
     }
@@ -82,12 +84,12 @@ impl OpdsFeed {
     }
 }
 
-impl<T> From<(String, String, String, Vec<T>, i64, i64)> for OpdsFeed
+impl<T> From<(String, String, String, Vec<T>, usize, bool, bool)> for OpdsFeed
 where
     OpdsEntry: From<T>,
 {
-    fn from(tuple: (String, String, String, Vec<T>, i64, i64)) -> OpdsFeed {
-        let (id, title, href_postfix, data, page, count) = tuple;
+    fn from(tuple: (String, String, String, Vec<T>, usize, bool, bool)) -> OpdsFeed {
+        let (id, title, href_postfix, data, page, has_next, has_previous) = tuple;
 
         let entries = data.into_iter().map(OpdsEntry::from).collect::<Vec<_>>();
 
@@ -104,7 +106,7 @@ where
             },
         ];
 
-        if page > 0 {
+        if has_previous {
             links.push(OpdsLink {
                 link_type: OpdsLinkType::Navigation,
                 rel: OpdsLinkRel::Previous,
@@ -112,11 +114,7 @@ where
             });
         }
 
-        // TODO: this 20.0 is the page size, which I might make dynamic for OPDS routes... but
-        // not sure..
-        let total_pages = (count as f32 / 20.0).ceil() as u32;
-
-        if page < total_pages as i64 && entries.len() == 20 {
+        if has_next {
             links.push(OpdsLink {
                 link_type: OpdsLinkType::Navigation,
                 rel: OpdsLinkRel::Next,

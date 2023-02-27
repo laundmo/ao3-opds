@@ -3,21 +3,26 @@ use color_eyre::{eyre::eyre, Result};
 use scraper::ElementRef;
 
 use super::utils::*;
+use crate::opds::OpdsLinkRel;
+use crate::opds::OpdsLinkType;
+use crate::opds::{OpdsEntry, OpdsLink};
 
 #[derive(Debug)]
-pub(crate) struct Author {
-    name: String,
-}
+pub(crate) struct Authors(Vec<String>);
 
-impl Author {
-    pub(crate) fn from_element(element: &ElementRef) -> Result<Author> {
-        Ok(Author {
-            name: element
-                .text()
-                .next()
-                .ok_or_else(|| eyre!("no author text found"))?
-                .to_string(),
-        })
+impl Authors {
+    pub(crate) fn from_element(element: &ElementRef) -> Result<Authors> {
+        let mut authors = Vec::new();
+        for a in select_all(element, r#"a[rel="author"]"#) {
+            authors.push(
+                a.text()
+                    .next()
+                    .ok_or_else(|| eyre!("Issue parsing author"))?
+                    .to_string(),
+            );
+        }
+
+        Ok(Authors(authors))
     }
 }
 
@@ -86,9 +91,9 @@ enum Chapters {
 
 #[derive(Debug)]
 pub(crate) struct Work {
-    author: Author,
+    authors: Authors, // TODO: Fandom!
     title: String,
-    uri: String,
+    id: i64,
     tags: Tags,
     summary: String,
     series: Option<SeriesRef>,
@@ -107,7 +112,11 @@ impl Work {
         let heading = select_next(element, "h4.heading")?;
         let title = select_next_str(&heading, "a")?;
         let uri = select_next_attr(&heading, "a", "href")?;
-        let author_element = select_next(&heading, r#"a[rel="author"]"#)?;
+        let id = uri
+            .split('/')
+            .last()
+            .ok_or_else(|| eyre!("could not split uri: {}", uri))?
+            .parse::<i64>()?;
         let last_updated = ao3_dt_parse(&select_next_str(element, "div > p.datetime")?);
 
         let chapters = {
@@ -128,9 +137,9 @@ impl Work {
 
         let tags_element = select_next(element, r#"ul.tags"#)?;
         Ok(Work {
-            author: Author::from_element(&author_element)?,
+            authors: Authors::from_element(&heading)?,
             title,
-            uri,
+            id,
             tags: Tags::from_element(&tags_element)?,
             summary: select_next_str(element, "blockquote.summary")?,
             series,
@@ -143,5 +152,30 @@ impl Work {
             bookmarks: select_int(element, "dl.stats > dd.bookmarks > a").unwrap_or(0),
             hits: select_int(element, "dl.stats > dd.hits")?,
         })
+    }
+}
+
+impl From<Work> for OpdsEntry {
+    fn from(value: Work) -> Self {
+        let content: String = format!(
+            r"[{}], [{}], [{}], [{}]\n{}",
+            value.tags.warnings.first().unwrap_or(&"".to_string()),
+            value.tags.relationships.first().unwrap_or(&"".to_string()),
+            value.tags.characters.first().unwrap_or(&"".to_string()),
+            value.tags.freeform.first().unwrap_or(&"".to_string()),
+            value.summary,
+        );
+        Self::new(
+            format!("/works/{}", value.id),
+            value.last_updated,
+            value.title,
+            Some(content),
+            Some(value.authors.0),
+            Some(vec![OpdsLink::new(
+                OpdsLinkType::Epub,
+                OpdsLinkRel::Acquisition,
+                format!("https://archiveofourown.org/downloads/{}/a.epub", value.id),
+            )]),
+        )
     }
 }
