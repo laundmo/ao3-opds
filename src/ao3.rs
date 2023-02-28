@@ -5,6 +5,6 @@ mod work;
 
 pub(crate) use self::{
     history::{HistoryPage, HistoryWork},
-    session::Session,
+    session::{AuthorizedSession, Session},
     work::{Authors, SeriesRef, Tags, Work},
 };

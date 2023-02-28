@@ -66,9 +66,9 @@ impl HistoryWork {
     }
 }
 
-impl From<HistoryWork> for OpdsEntry {
-    fn from(value: HistoryWork) -> Self {
-        value.work.into() // TODO: maybe add to the OpdsEntry when doing this
+impl From<&HistoryWork> for OpdsEntry {
+    fn from(value: &HistoryWork) -> Self {
+        (&value.work).into() // TODO: maybe add to the OpdsEntry when doing this
     }
 }
 
@@ -109,13 +109,13 @@ impl HistoryPage {
     }
 }
 
-impl From<HistoryPage> for OpdsFeed {
-    fn from(value: HistoryPage) -> Self {
+impl From<&HistoryPage> for OpdsFeed {
+    fn from(value: &HistoryPage) -> Self {
         OpdsFeed::paginated(
             &format!("history-page-{}", value.page),
             &format!("History page {}", value.page),
             "history",
-            value.history.into(),
+            value.history.iter().collect(),
             value.page,
             value.has_next,
             value.has_prev,

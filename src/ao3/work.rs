@@ -141,7 +141,7 @@ impl Work {
             title,
             id,
             tags: Tags::from_element(&tags_element)?,
-            summary: select_next_str(element, "blockquote.summary")?,
+            summary: select_string(element, "blockquote.summary")?,
             series,
             last_updated,
             language: select_next_str(element, "dl.stats > dd.language")?,
@@ -155,8 +155,8 @@ impl Work {
     }
 }
 
-impl From<Work> for OpdsEntry {
-    fn from(value: Work) -> Self {
+impl From<&Work> for OpdsEntry {
+    fn from(value: &Work) -> Self {
         let content: String = format!(
             r"[{}], [{}], [{}], [{}]\n{}",
             value.tags.warnings.first().unwrap_or(&"".to_string()),
@@ -168,9 +168,9 @@ impl From<Work> for OpdsEntry {
         Self::new(
             format!("/works/{}", value.id),
             value.last_updated,
-            value.title,
+            value.title.clone(),
             Some(content),
-            Some(value.authors.0),
+            Some(value.authors.0.clone()),
             Some(vec![OpdsLink::new(
                 OpdsLinkType::Epub,
                 OpdsLinkRel::Acquisition,

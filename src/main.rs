@@ -1,16 +1,19 @@
 use color_eyre::{eyre::eyre, Result};
-use std::env;
+use std::{env, num::NonZeroUsize, sync::Arc};
 
-use crate::ao3::{HistoryPage, Session};
+use crate::ao3::{AuthorizedSession, HistoryPage, Session};
+use tokio::sync::Mutex;
 
+use lru::LruCache;
 use opds::OpdsFeed;
 use poem::{
     error::ResponseError,
     get, handler,
     http::{HeaderMap, HeaderValue, StatusCode},
     listener::TcpListener,
-    web::Query,
-    IntoResponse, Response, Result as WebResult, Route, Server,
+    middleware::AddData,
+    web::{Data, Query},
+    Endpoint, EndpointExt, IntoResponse, Response, Result as WebResult, Route, Server,
 };
 use quick_xml::Writer;
 use std::io::Cursor;
@@ -43,12 +46,6 @@ impl ResponseError for EyreError {
     }
 }
 
-async fn history_page(page: usize) -> Result<HistoryPage> {
-    let session = Session::new()?;
-    let session = session.login("laundmo", &env::var("AO3_PW")?).await?;
-    HistoryPage::new(&session, page).await
-}
-
 fn feed_to_web(feed: OpdsFeed) -> WebResult<(HeaderMap, String)> {
     let mut headers = HeaderMap::new();
     let header = "application/atom+xml;profile=opds-catalog;kind=navigation"
@@ -68,9 +65,21 @@ struct Pagination {
 #[handler]
 async fn history_feed(
     Query(Pagination { page }): Query<Pagination>,
+    data: Data<&Ao3Cache>,
 ) -> WebResult<(HeaderMap, String)> {
-    let history = history_page(page).await.map_err(EyreError::from)?;
-    feed_to_web(history.into())
+    let mut cache_data = data.history_page_cache.lock().await;
+
+    if !cache_data.contains(&format!("history-page-{}", page)) {
+        let a = HistoryPage::new(&data.session, page)
+            .await
+            .map_err(EyreError::from)?;
+        cache_data.put(format!("history-page-{}", page), a);
+    }
+
+    let a = cache_data
+        .get(&format!("history-page-{}", page))
+        .expect("should be unreachable because cache is populated beforehand");
+    feed_to_web(a.into())
 }
 
 #[handler]
@@ -102,11 +111,26 @@ fn testfeed() -> WebResult<(HeaderMap, String)> {
     feed_to_web(feed)
 }
 
+#[derive(Clone)]
+struct Ao3Cache {
+    session: AuthorizedSession,
+    history_page_cache: Arc<Mutex<LruCache<String, HistoryPage>>>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv()?;
     color_eyre::install()?;
-    let app = Route::new().at("/opds/v1.2/history", get(history_feed));
+    let session = Session::new()?;
+    let session = session.login("laundmo", &env::var("AO3_PW")?).await?;
+    let cache = Ao3Cache {
+        session,
+        history_page_cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap()))),
+    };
+
+    let app = Route::new()
+        .at("/opds/v1.2/history", get(history_feed))
+        .data(cache);
     Server::new(TcpListener::bind("127.0.0.1:3000"))
         .name("hello-world")
         .run(app)

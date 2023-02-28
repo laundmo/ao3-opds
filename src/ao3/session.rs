@@ -6,6 +6,8 @@ use reqwest::{Client, ClientBuilder, Url};
 pub(crate) struct Session {
     client: Client,
 }
+
+#[derive(Clone)]
 pub(crate) struct AuthorizedSession {
     client: Client,
     username: String,
