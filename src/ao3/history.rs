@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, FixedOffset};
 use color_eyre::Result;
 use lazy_static::lazy_static;
@@ -8,14 +10,14 @@ use crate::opds::{OpdsEntry, OpdsFeed};
 
 use super::{session::AuthorizedSession, utils::*, Work};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Changed {
     Latest,
     Minor,
     Updated,
     Unknown(String),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct HistoryWork {
     work: Work,
     last_visited: DateTime<FixedOffset>,
@@ -72,7 +74,7 @@ impl From<&HistoryWork> for OpdsEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct HistoryPage {
     history: Vec<HistoryWork>,
     page: usize,
@@ -109,8 +111,8 @@ impl HistoryPage {
     }
 }
 
-impl From<&HistoryPage> for OpdsFeed {
-    fn from(value: &HistoryPage) -> Self {
+impl From<Arc<HistoryPage>> for OpdsFeed {
+    fn from(value: Arc<HistoryPage>) -> Self {
         OpdsFeed::paginated(
             &format!("history-page-{}", value.page),
             &format!("History page {}", value.page),

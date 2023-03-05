@@ -4,8 +4,8 @@ use std::{env, num::NonZeroUsize, sync::Arc};
 use crate::ao3::{AuthorizedSession, HistoryPage, Session};
 use tokio::sync::Mutex;
 
-use lru::LruCache;
-use opds::OpdsFeed;
+use moka::future::Cache;
+use opds::{feed, OpdsFeed};
 use poem::{
     error::ResponseError,
     get, handler,
@@ -15,7 +15,7 @@ use poem::{
     web::{Data, Query},
     Endpoint, EndpointExt, IntoResponse, Response, Result as WebResult, Route, Server,
 };
-use quick_xml::Writer;
+use quick_xml::{se, Writer};
 use std::io::Cursor;
 
 use crate::opds::{OpdsEntry, OpdsLink, OpdsLinkRel, OpdsLinkType};
@@ -46,15 +46,6 @@ impl ResponseError for EyreError {
     }
 }
 
-fn feed_to_web(feed: OpdsFeed) -> WebResult<(HeaderMap, String)> {
-    let mut headers = HeaderMap::new();
-    let header = "application/atom+xml;profile=opds-catalog;kind=navigation"
-        .parse()
-        .map_err(|_| EyreError::from(eyre!("Failed to parse header")))?;
-    headers.insert("Content-Type", header);
-    Ok((headers, feed.build().map_err(EyreError::from)?))
-}
-
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -62,59 +53,42 @@ struct Pagination {
     page: usize,
 }
 
+fn headers() -> WebResult<HeaderMap> {
+    let mut headers = HeaderMap::new();
+    let header = "application/atom+xml;profile=opds-catalog;kind=navigation"
+        .parse()
+        .map_err(|_| EyreError::from(eyre!("Failed to parse header")))?;
+    headers.insert("Content-Type", header);
+    Ok(headers)
+}
+
 #[handler]
 async fn history_feed(
     Query(Pagination { page }): Query<Pagination>,
     data: Data<&Ao3Cache>,
 ) -> WebResult<(HeaderMap, String)> {
-    let mut cache_data = data.history_page_cache.lock().await;
-
-    if !cache_data.contains(&format!("history-page-{}", page)) {
+    if !data.history_page_cache.contains_key(&page) {
         let a = HistoryPage::new(&data.session, page)
             .await
             .map_err(EyreError::from)?;
-        cache_data.put(format!("history-page-{}", page), a);
+        data.history_page_cache.insert(page, Arc::new(a)).await;
     }
 
-    let a = cache_data
-        .get(&format!("history-page-{}", page))
+    let a = data
+        .history_page_cache
+        .get(&page)
         .expect("should be unreachable because cache is populated beforehand");
-    feed_to_web(a.into())
-}
-
-#[handler]
-fn testfeed() -> WebResult<(HeaderMap, String)> {
-    // todo
-    let entry = OpdsEntry::new(
-        "2".to_string(),
-        chrono::Utc::now().into(),
-        "Test Entry".to_string(),
-        Some("Test Entry Content blah blah blah".to_string()),
-        Some(vec!["testauthor".to_string()]),
-        Some(vec![OpdsLink {
-            href: "https://i.laundmo.com/tENe0/noLAletu89.png".to_string(),
-            rel: OpdsLinkRel::Image,
-            link_type: OpdsLinkType::Image,
-        }]),
-    );
-    let link = OpdsLink {
-        link_type: OpdsLinkType::Navigation,
-        rel: OpdsLinkRel::ItSelf,
-        href: "/".to_string(),
-    };
-    let feed = OpdsFeed::new(
-        "1".to_string(),
-        "Test Feed".to_string(),
-        Some(vec![link]),
-        vec![entry],
-    );
-    feed_to_web(feed)
+    Ok((
+        headers()?,
+        se::to_string::<OpdsFeed>(&a.into())
+            .map_err(|_| EyreError::from(eyre!("could not serialise")))?,
+    ))
 }
 
 #[derive(Clone)]
 struct Ao3Cache {
     session: AuthorizedSession,
-    history_page_cache: Arc<Mutex<LruCache<String, HistoryPage>>>,
+    history_page_cache: Cache<usize, Arc<HistoryPage>>,
 }
 
 #[tokio::main]
@@ -125,13 +99,13 @@ async fn main() -> Result<()> {
     let session = session.login("laundmo", &env::var("AO3_PW")?).await?;
     let cache = Ao3Cache {
         session,
-        history_page_cache: Arc::new(Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap()))),
+        history_page_cache: Cache::new(100),
     };
 
     let app = Route::new()
         .at("/opds/v1.2/history", get(history_feed))
         .data(cache);
-    Server::new(TcpListener::bind("127.0.0.1:3000"))
+    Server::new(TcpListener::bind("0.0.0.0:3000"))
         .name("hello-world")
         .run(app)
         .await?;

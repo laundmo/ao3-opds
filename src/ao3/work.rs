@@ -5,9 +5,10 @@ use scraper::ElementRef;
 use super::utils::*;
 use crate::opds::OpdsLinkRel;
 use crate::opds::OpdsLinkType;
+use crate::opds::StumpAuthor;
 use crate::opds::{OpdsEntry, OpdsLink};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Authors(Vec<String>);
 
 impl Authors {
@@ -26,7 +27,17 @@ impl Authors {
     }
 }
 
-#[derive(Debug)]
+impl From<&Authors> for Vec<StumpAuthor> {
+    fn from(value: &Authors) -> Self {
+        value
+            .0
+            .iter()
+            .map(|name| StumpAuthor::new(name.to_string(), None))
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct Tags {
     warnings: Vec<String>,
     relationships: Vec<String>,
@@ -66,7 +77,7 @@ impl Tags {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct SeriesRef {
     name: String,
     uri: String,
@@ -83,13 +94,13 @@ impl SeriesRef {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Chapters {
     Known(i32, i32),
     Unknown(i32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Work {
     authors: Authors, // TODO: Fandom!
     title: String,
@@ -170,7 +181,7 @@ impl From<&Work> for OpdsEntry {
             value.last_updated,
             value.title.clone(),
             Some(content),
-            Some(value.authors.0.clone()),
+            Some((&value.authors).into()),
             Some(vec![OpdsLink::new(
                 OpdsLinkType::Epub,
                 OpdsLinkRel::Acquisition,

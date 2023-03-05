@@ -1,19 +1,24 @@
-use std::io::Cursor;
-
 use super::{
     entry::OpdsEntry,
     link::{OpdsLink, OpdsLinkRel, OpdsLinkType},
-    util,
 };
-use color_eyre::Result;
-use quick_xml::Writer;
+use chrono::Utc;
+use serde::Serialize;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(rename = "feed")]
 pub struct OpdsFeed {
+    #[serde(rename = "@xmlns")]
+    pub xmlns: String,
+    #[serde(rename = "@xmlns:opds")]
+    pub xmlns_opds: String,
+    pub updated: String,
     pub id: String,
     pub title: String,
-    pub entries: Vec<OpdsEntry>,
+    #[serde(rename = "link")]
     pub links: Option<Vec<OpdsLink>>,
+    #[serde(rename = "entry")]
+    pub entries: Vec<OpdsEntry>,
 }
 
 impl OpdsFeed {
@@ -24,6 +29,9 @@ impl OpdsFeed {
         entries: Vec<OpdsEntry>,
     ) -> Self {
         Self {
+            xmlns: "http://www.w3.org/2005/Atom".to_string(),
+            xmlns_opds: "http://opds-spec.org/2010/catalog".to_string(),
+            updated: Utc::now().to_rfc3339(),
             id,
             title,
             entries,
@@ -54,34 +62,6 @@ impl OpdsFeed {
         )
             .into()
     }
-
-    /// Build an xml string from the feed.
-    pub fn build(&self) -> Result<String> {
-        let mut writer = Writer::new(Cursor::new(Vec::new()));
-
-        writer
-            .create_element("feed")
-            .with_attribute(("xmlns", "http://www.w3.org/2005/Atom"))
-            .with_attribute(("xmlns:opds", "http://opds-spec.org/2010/catalog"))
-            .write_inner_content(|writer| {
-                util::write_elem("id", &self.id, writer)?;
-                util::write_elem("title", &self.title, writer)?;
-                util::write_elem("updated", &chrono::Utc::now().to_rfc3339(), writer)?;
-
-                if let Some(links) = &self.links {
-                    for link in links {
-                        link.write(writer)?;
-                    }
-                }
-
-                for entry in &self.entries {
-                    entry.write(writer)?;
-                }
-                Ok(())
-            })?;
-
-        Ok(String::from_utf8(writer.into_inner().into_inner())?)
-    }
 }
 
 impl<T> From<(String, String, String, Vec<T>, usize, bool, bool)> for OpdsFeed
@@ -94,34 +74,67 @@ where
         let entries = data.into_iter().map(OpdsEntry::from).collect::<Vec<_>>();
 
         let mut links = vec![
-            OpdsLink {
-                link_type: OpdsLinkType::Navigation,
-                rel: OpdsLinkRel::ItSelf,
-                href: format!("/opds/v1.2/{}", href_postfix),
-            },
-            OpdsLink {
-                link_type: OpdsLinkType::Navigation,
-                rel: OpdsLinkRel::Start,
-                href: "/opds/v1.2/catalog".into(),
-            },
+            OpdsLink::new(
+                OpdsLinkType::Navigation,
+                OpdsLinkRel::ItSelf,
+                format!("/opds/v1.2/{}", href_postfix),
+            ),
+            OpdsLink::new(
+                OpdsLinkType::Navigation,
+                OpdsLinkRel::Start,
+                "/opds/v1.2/catalog".into(),
+            ),
         ];
 
         if has_previous {
-            links.push(OpdsLink {
-                link_type: OpdsLinkType::Navigation,
-                rel: OpdsLinkRel::Previous,
-                href: format!("/opds/v1.2/{}?page={}", href_postfix, page - 1),
-            });
+            links.push(OpdsLink::new(
+                OpdsLinkType::Navigation,
+                OpdsLinkRel::Previous,
+                format!("/opds/v1.2/{}?page={}", href_postfix, page - 1),
+            ));
         }
 
         if has_next {
-            links.push(OpdsLink {
-                link_type: OpdsLinkType::Navigation,
-                rel: OpdsLinkRel::Next,
-                href: format!("/opds/v1.2/{}?page={}", href_postfix, page + 1),
-            });
+            links.push(OpdsLink::new(
+                OpdsLinkType::Navigation,
+                OpdsLinkRel::Next,
+                format!("/opds/v1.2/{}?page={}", href_postfix, page + 1),
+            ));
         }
 
         OpdsFeed::new(id, title, Some(links), entries)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::opds::{OpdsEntry, OpdsFeed, OpdsLink, OpdsLinkRel, OpdsLinkType, StumpAuthor};
+
+    #[test]
+    fn it_works() {
+        let entry = OpdsEntry::new(
+            "2".to_string(),
+            chrono::Utc::now().into(),
+            "Test Entry".to_string(),
+            Some("Test Entry Content blah blah blah".to_string()),
+            Some(vec![StumpAuthor::new("Test Author".to_string(), None)]),
+            Some(vec![OpdsLink::new(
+                OpdsLinkType::Image,
+                OpdsLinkRel::Image,
+                "https://i.laundmo.com/tENe0/noLAletu89.png".to_string(),
+            )]),
+        );
+        let link = OpdsLink::new(
+            OpdsLinkType::Navigation,
+            OpdsLinkRel::ItSelf,
+            "/".to_string(),
+        );
+        let feed = OpdsFeed::new(
+            "1".to_string(),
+            "Test Feed".to_string(),
+            Some(vec![link]),
+            vec![entry],
+        );
+        println!("{}?", quick_xml::se::to_string(&feed).unwrap());
     }
 }

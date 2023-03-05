@@ -2,7 +2,6 @@ pub mod author;
 pub mod entry;
 pub mod feed;
 pub mod link;
-pub mod util;
 
 pub use self::author::StumpAuthor;
 pub use self::entry::OpdsEntry;

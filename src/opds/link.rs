@@ -1,6 +1,4 @@
-use crate::{XmlResult, XmlWriter};
-
-use super::util::OpdsEnumStr;
+use serde::{self, Serialize};
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpdsLinkType {
@@ -13,8 +11,8 @@ pub enum OpdsLinkType {
     Search,      // "application/opensearchdescription+xml"
 }
 
-impl OpdsEnumStr for OpdsLinkType {
-    fn as_str(&self) -> &'static str {
+impl ToString for OpdsLinkType {
+    fn to_string(&self) -> String {
         match self {
             OpdsLinkType::Acquisition => {
                 "application/atom+xml;profile=opds-catalog;kind=acquisition"
@@ -26,6 +24,7 @@ impl OpdsEnumStr for OpdsLinkType {
             OpdsLinkType::Epub => "application/epub+zip",
             OpdsLinkType::Search => "application/opensearchdescription+xml",
         }
+        .to_string()
     }
 }
 
@@ -43,8 +42,8 @@ pub enum OpdsLinkRel {
     Search,      // "search"
 }
 
-impl OpdsEnumStr for OpdsLinkRel {
-    fn as_str(&self) -> &'static str {
+impl ToString for OpdsLinkRel {
+    fn to_string(&self) -> String {
         match self {
             OpdsLinkRel::ItSelf => "self",
             OpdsLinkRel::Subsection => "subsection",
@@ -57,36 +56,41 @@ impl OpdsEnumStr for OpdsLinkRel {
             OpdsLinkRel::PageStream => "http://vaemendis.net/opds-pse/stream",
             OpdsLinkRel::Search => "search",
         }
+        .to_string()
     }
 }
 
-// TODO: this struct needs to be restructured.
-// I need to be able to output the following:
-// <link xmlns:wstxns3="http://vaemendis.net/opds-pse/ns" href="/opds/v1.2/books/<id>/pages/{pageNumber}?zero_based=true" wstxns3:count="309" type="image/jpeg" rel="http://vaemendis.net/opds-pse/stream"/>
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct OpdsLink {
-    pub link_type: OpdsLinkType,
-    pub rel: OpdsLinkRel,
+    #[serde(rename = "@link")]
+    link_type: String,
+    #[serde(rename = "@rel")]
+    rel: String,
+    #[serde(rename = "@href")]
     pub href: String,
 }
 
 impl OpdsLink {
     pub fn new(link_type: OpdsLinkType, rel: OpdsLinkRel, href: String) -> Self {
         Self {
-            link_type,
-            rel,
+            link_type: link_type.to_string(),
+            rel: rel.to_string(),
             href,
         }
     }
+}
 
-    pub fn write(&self, writer: &mut XmlWriter) -> XmlResult {
-        writer
-            .create_element("link")
-            .with_attribute(("type", self.link_type.as_str()))
-            .with_attribute(("rel", self.rel.as_str()))
-            .with_attribute(("href", self.href.as_str()))
-            .write_empty()?;
-        Ok(())
+#[cfg(test)]
+mod tests {
+    use crate::opds::{OpdsLink, OpdsLinkRel, OpdsLinkType};
+
+    #[test]
+    fn it_works() {
+        let v = OpdsLink::new(
+            OpdsLinkType::Acquisition,
+            OpdsLinkRel::ItSelf,
+            "test".to_string(),
+        );
+        dbg!(quick_xml::se::to_string(&v));
     }
 }
